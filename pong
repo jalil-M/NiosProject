@@ -1,0 +1,617 @@
+; PONG GAME
+; By Abdeljalil MOUSSA and Tristan MEYNIER
+
+
+
+.equ BALL, 0x1000    ; ball state (its position and velocity) 
+.equ PADDLES, 0x1010 ; paddles position 
+.equ SCORES, 0x1018  ; game scores
+
+.equ LEDS, 0x2000    ; LED addresses 
+.equ BUTTONS, 0x2030 ; BUTTON addresses
+
+init:
+
+	addi sp, zero, LEDS
+	
+	; update score 
+	call update_score
+	call display_score 
+	call wait 	
+	call wait
+	call wait 	
+	call wait 
+    call wait
+	call wait
+	call wait
+	call wait
+
+	; check winner 
+	call check_winner 
+
+	; Initial positions and velocity 
+	addi t0, zero, 6
+	addi t1, zero, 3
+	addi t2, zero, -1
+ 	addi t3, zero, -1
+
+	; Inital position of the paddles 
+	addi t4, zero, 3
+	addi t5, zero, 3
+	stw t4, PADDLES     (zero) 
+	stw t5, PADDLES + 4 (zero)  
+
+	; Store the initial positions and velocity 
+	stw t0, BALL      (zero) 
+	stw t1, BALL + 4  (zero) 
+	stw t2, BALL + 8  (zero) 
+	stw t3, BALL + 12 (zero) 
+
+main:
+
+loop: 	
+	
+	call clear_leds 
+
+	call move_paddles 
+
+	call hit_test 
+	
+	bne v0, zero, init 
+		
+	call move_ball
+
+	call draw_paddles 
+
+	ldw a0, BALL     (zero) 
+	ldw a1, BALL + 4 (zero) 
+	
+	call set_pixel 
+
+	call wait 
+	call wait
+
+	br loop
+
+; BEGIN:display_score
+display_score:
+	
+	; Loading the scores of the 2 players and shifting them
+	ldw t0, SCORES     (zero)
+	ldw t1, SCORES + 4 (zero)
+	slli t0, t0, 2	
+	slli t1, t1, 2
+	ldw t2, font_data(t0)		
+	ldw t3, font_data(t1)		
+	stw t2, LEDS(zero)
+	stw t3, LEDS+8(zero)
+	
+	; Display the separator
+	ldw t4, font_data+64(zero)
+	stw t4, LEDS+4(zero)
+
+ret
+; END:display_score
+	
+update_score:
+ 
+	addi sp, sp, -16 
+	stw t0, 0  (sp) 
+	stw t1, 4  (sp) 
+ 	stw t2, 8  (sp)
+	stw t3, 12 (sp) 
+
+	ldw t0, SCORES (zero) 
+	ldw t1, SCORES + 4 (zero) 
+
+	addi t2, zero, 1
+	addi t3, zero, 2
+
+	beq v0, t2, update_score_player1
+	beq v0, t3, update_score_player2
+	br fin2
+		
+update_score_player1:
+	addi t0, t0, 1 
+	stw  t0, SCORES (zero)
+	br fin2   
+	
+update_score_player2:
+	addi t1, t1, 1
+	stw t1, SCORES + 4 (zero) 
+
+fin2: 
+
+	ldw t0, 0  (sp) 
+	ldw t1, 4  (sp) 
+	ldw t2, 8  (sp) 
+	ldw t3, 12 (sp)
+	addi sp, sp, 16
+ret
+
+check_winner:
+	
+	; Verify if the player reaches the maximum score ( 10 points )
+	ldw t0, SCORES(zero)
+	ldw t1, SCORES+4(zero)
+	addi t2, zero, 0xA
+	beq t0, t2, is_winner
+	beq t1, t2, is_winner
+ret
+
+is_winner:
+	; branch here if the player is the winner
+	break
+
+; BEGIN:clear_leds	
+clear_leds:
+	
+	stw zero, LEDS     (zero)
+	stw zero, LEDS + 4 (zero)
+	stw zero, LEDS + 8 (zero)
+ret
+; END:clear_leds
+
+; BEGIN:set_pixel
+set_pixel: 
+ 
+	; Store registers 
+	addi sp, sp, -32
+	stw t0, 0(sp) 
+	stw t1, 4(sp) 
+	stw t2, 8(sp)
+	stw t3, 12(sp)
+	stw t4, 16(sp)
+	stw t5, 20(sp)
+	stw t6, 24(sp)
+	stw t7, 28(sp)
+
+	add  t0, a0, zero 
+	add  t1, a1, zero 
+	addi t2, zero, 0x000C ; Init mask to fetch the right word 
+	addi t3, zero, 0x0001 ; Init mask to get the right bit 
+	
+	; Get the right word
+	and t4, t0, t2
+	ldw t5, LEDS(t4)  ; load the right word 
+
+	; Get the right bit 
+	sub t6, t0, t4
+	slli t6, t6, 0x0003
+	add t7, t6, t1   ; Compute the rigth number to shift 
+	sll t3, t3, t7   ; Shift the mask 
+	or 	t5, t5, t3   ; Update the word using the mask 
+
+	; Update the word in the memory 
+	stw t5, LEDS(t4)
+
+	; Load registers 
+	ldw t0, 0(sp) 
+	ldw t1, 4(sp) 
+	ldw t2, 8(sp)
+	ldw t3, 12(sp)
+	ldw t4, 16(sp)
+	ldw t5, 20(sp)
+	ldw t6, 24(sp)
+	ldw t7, 28(sp) 
+	addi sp, sp, 32  
+ret
+; END:set_pixel
+
+; BEGIN:hit_test
+hit_test: 
+	
+	; Store registers 
+	addi sp, sp, -28
+	stw t0, 0(sp) 
+	stw t1, 4(sp)
+	stw t2, 8(sp) 
+	stw t3, 12(sp)
+ 	stw t4, 16(sp) 
+	stw t5, 20(sp)
+	stw t6, 24(sp) 
+	
+	; Init result 
+	add v0, zero, zero 
+
+	; Load ball position and velocity 
+	ldw t0, BALL      (zero) 
+	ldw t1, BALL + 4  (zero) 
+	ldw t2, BALL + 8  (zero) 
+	ldw t3, BALL + 12 (zero) 
+	
+	; Load paddles positions
+	ldw t4, PADDLES     (zero) 
+	ldw t5, PADDLES + 4 (zero) 
+
+	addi t6, zero, 1  ; left bound for x 
+	addi t7, zero, 10 ; right bound for x 
+
+	beq t0, t6, check_collision_left 
+	beq t0, t7, check_collision_right  
+	br check_wall_collision
+
+check_collision:
+
+check_collision_left:
+
+	; Compute the next position of the ball 
+	add t6, t0, t2	
+
+	; if the ball is coming back: no collision with paddles
+	bne t6, zero, check_wall_collision 
+
+check_special_case_top_left:
+	bne t1, zero, check_special_case_bottom_left 
+	addi t6, zero, 3
+	bge t4, t6, check_special_case_bottom_left ; check if the ball is hiting the wall and the paddle at the same time 
+	addi t3, zero, 1
+	br hit_test_x 
+
+check_special_case_bottom_left: 
+	addi t6, zero, 7 
+	bne t1, t6, check_hit_left_paddle 
+	addi t6, zero, 5 
+	blt t4, t6, check_hit_left_paddle ; check if the ball is hiting the wall and the paddle at the same time 
+	addi t3, zero, -1
+	br hit_test_x 
+
+check_hit_left_paddle: 
+
+	addi t6, t4, -1 
+	beq t1, t6, top_left_collision ; check top collision
+	addi t6, t6, -1
+	cmpeqi t7, t3, 1 ; check if the ball is going up to down 
+	beq t7, zero, skip0
+	beq t1, t6, top_left_collision ; check top collision
+
+skip0:
+	beq t1, t4, center_collision ; check center collision 
+	
+	addi t6, t4, 1
+	beq t1, t6, bottom_left_collision ; check bottom collision
+	addi t6, t6, 1
+	cmpeqi t7, t3, -1 ; check if the ball is going down to up 
+	beq t7, zero, skip1
+	beq t1, t6, bottom_left_collision ; check bottom collision
+
+skip1:
+	addi v0, zero, 2 ; update score if no collision
+	br fin0 
+
+check_collision_right:
+
+	; Compute the next position of the ball 
+	add t6, t0, t2
+	addi t7, zero, 11 
+	
+	; if the ball is coming back: no collision 
+	bne t6, t7, check_wall_collision  
+
+check_special_case_top_right: 
+	bne t1, zero, check_special_case_bottom_right 
+	addi t6, zero, 3
+	bge t5, t6, check_special_case_bottom_right ; check if the ball is hiting the wall and the paddle at the same time 
+	addi t3, zero, 1
+	br hit_test_x 
+
+check_special_case_bottom_right: 
+	addi t6, zero, 7 
+	bne t1, t6, check_hit_right_paddle 
+	addi t6, zero, 5 
+	blt t5, t6, check_hit_right_paddle ; check if the ball is hiting the wall and the paddle at the same time 
+	addi t3, zero, -1
+	br hit_test_x 
+
+check_hit_right_paddle: 
+
+	addi t6, t5, -1 
+	beq t1, t6, top_right_collision ; check top collision 
+	addi t6, t6, -1
+	cmpeqi t7, t3, 1 ; check if the ball is going up to down 
+	beq t7, zero, skip2 
+	beq t1, t6, top_right_collision ; check top collision 
+
+skip2:
+	beq t1, t5, center_collision ; check center collision 
+	
+	addi t6, t5, 1
+	beq t1, t6, bottom_right_collision ; check bottom collision
+	addi t6, t6, 1
+	cmpeqi t7, t3, -1
+	beq t7, zero, skip3 ; check if the ball is going down to up 
+	beq t1, t6, bottom_right_collision ; check bottom collision
+
+skip3:
+	addi v0, zero, 1 ; update score if no collision
+	br fin0  
+
+check_wall_collision: 
+	
+	addi t6, zero, 7 
+	
+	; Check the boundary for y 
+	beq t1, zero, invert_y_velocity_up  
+	beq t1, t6, invert_y_velocity_down  
+	br fin0
+
+invert_y_velocity_up: 
+	
+	addi t6, zero, -1
+	bne t3, t6, fin0
+		
+	sub t3, zero, t3 
+	br fin0 
+
+invert_y_velocity_down:
+
+	addi t6, zero, 1
+ 	bne t3, t6, fin0 
+	
+	sub t3, zero, t3
+ 	br fin0 
+
+hit_test_y:
+
+top_left_collision:
+
+	addi t6, t4, -1
+	bne t6, t1, top_corner_bound 
+	; if we are not on a corner the y velocity is not affected 
+	br hit_test_x
+
+top_corner_bound:
+ 
+	addi t3, zero, -1
+	br hit_test_x
+	
+center_collision: 
+
+	; collision on the center do not affect the y velocity 
+	br hit_test_x 
+
+bottom_left_collision: 
+
+	addi t6, t4, 1 
+	bne t6, t1, bottom_corner_bound 
+	; if we are not on a corner the y velocity is not affected 
+	br hit_test_x
+
+bottom_corner_bound:
+
+	addi t3, zero, 1
+	br hit_test_x
+
+top_right_collision:
+
+	addi t6, t5, -1
+	bne t6, t1, top_corner_bound 
+	; if we are not on a corner the y velocity is not affected 
+	br hit_test_x
+
+bottom_right_collision: 
+
+	addi t6, t5, 1 
+	bne t6, t1, bottom_corner_bound
+	; if we are not on a corner the y velocity is not affected 
+	br hit_test_x
+
+hit_test_x: 
+
+	sub t2, zero, t2 
+
+fin0: 
+	; Store the changed velocity 
+	stw t2, BALL + 8  (zero)
+	stw t3, BALL + 12 (zero) 
+	
+	; Load the registers 
+	ldw t0, 0(sp) 
+	ldw t1, 4(sp)
+	ldw t2, 8(sp) 
+	ldw t3, 12(sp)
+ 	ldw t4, 16(sp) 
+	ldw t5, 20(sp)
+	ldw t6, 24(sp) 
+	addi sp, sp, 28
+ret
+; END:hit_test
+
+; BEGIN:move_ball			
+move_ball:
+
+	; store registers
+	addi sp, sp, -16
+	stw t0, 0(sp)
+	stw t1, 4(sp)
+	stw t2, 8(sp)
+	stw t3, 12(sp)
+
+	ldw t0, BALL (zero)
+	ldw t1, BALL+4 (zero)
+	ldw t2, BALL+8 (zero)
+	ldw t3, BALL+12(zero)
+
+	add t0, t0, t2 			; We add the velocity to the position X
+	add t1, t1, t3			; We add the velocity to the position Y
+
+	stw t0, BALL (zero) 	; We store our values of position
+	stw t1, BALL+4 (zero)
+
+	;load registers
+	ldw t0, 0(sp)
+	ldw t1, 4(sp)
+	ldw t2, 8(sp)
+	ldw t3, 12(sp)
+	addi sp, sp, 16
+ret
+; END:move_ball
+
+; BEGIN:move_paddles
+move_paddles:
+
+ 	; Store registers 
+	addi sp, sp, -32
+	stw t0, 0(sp) 
+	stw t1, 4(sp) 
+	stw t2, 8(sp)
+	stw t3, 12(sp)
+	stw t4, 16(sp)
+	stw t5, 20(sp)
+	stw t6, 24(sp)
+	stw t7, 28(sp)
+
+	ldw t0, BUTTONS + 4 (zero) ; get edgecapture  
+	ldw t6, PADDLES     (zero) ; get the position of the first paddle 
+	ldw t7, PADDLES + 4 (zero) ; get the position of the second paddle 
+	
+	; prepare the masks 
+	addi t1, zero, 1
+	addi t2, zero, 2
+	addi t3, zero, 4
+	addi t4, zero, 8 
+
+	; get the corresponding bit of the edgecapture using the masks 
+	and t1, t0, t1
+	and t2, t0, t2 
+	and t3, t0, t3
+	and t4, t0, t4
+
+paddle_1:
+	bne t1, zero, paddle_1_up
+	bne t2, zero, paddle_1_down 
+
+paddle_2:
+	bne t3, zero, paddle_2_down 
+	bne t4, zero, paddle_2_up 
+
+fin1:
+	stw t6, PADDLES     (zero) ; update the position of the left paddle 
+	stw t7, PADDLES + 4 (zero) ; update the position of the right paddle
+	
+	stw zero, BUTTONS + 4(zero)  
+
+	; Load registers 
+	ldw t0, 0(sp) 
+	ldw t1, 4(sp) 
+	ldw t2, 8(sp)
+	ldw t3, 12(sp)
+	ldw t4, 16(sp)
+	ldw t5, 20(sp)
+	ldw t6, 24(sp)
+	ldw t7, 28(sp) 
+	addi sp, sp, 32 
+
+ret 
+
+paddle_1_up:
+	cmpgei t1, t6, 2 ; check the lower bound 
+	beq t1, zero, paddle_2
+	addi t6, t6, -1
+	br paddle_2
+
+paddle_1_down:
+	cmplti t2, t6, 6 ; check the upper bound 
+	beq t2, zero, paddle_2
+	addi t6, t6, 1
+	br paddle_2
+ 
+paddle_2_up:
+	cmpgei t3, t7, 2 ; check the lower bound 
+	beq t3, zero, fin1 
+	addi t7, t7, -1
+	br fin1
+
+paddle_2_down:
+	cmplti t4, t7, 6 ; check the upper bound 
+	beq t4, zero, fin1
+	addi t7, t7, 1
+	br fin1
+; END:move_paddles 
+
+; BEGIN:draw_paddles
+draw_paddles: 
+
+	; store registers
+	addi sp, sp, -20
+	stw a0, 0(sp)
+	stw a1, 4(sp)
+	stw t0, 8(sp)
+	stw t1, 12(sp)
+	stw ra, 16(sp) 
+	
+	ldw t0, PADDLES     (zero) 
+	ldw t1, PADDLES + 4 (zero)  
+
+draw_first_paddle:
+	
+ 	add a0, zero, zero
+	
+	; draw upper pixel 
+	addi a1, t0, -1
+	call set_pixel
+	
+	; draw middle pixel 
+	add a1, t0, zero
+	call set_pixel 
+
+	; draw lower pixel 
+	addi a1, t0, 1 
+	call set_pixel
+	
+draw_second_pixel:
+
+	addi a0, zero, 11
+	
+	; draw upper pixel
+	addi a1, t1, -1
+	call set_pixel 
+
+	; draw middle pixel 
+	add a1, t1, zero 
+	call set_pixel 
+	
+	; draw lower pixel 
+	addi a1, t1, 1 
+	call set_pixel 
+
+	; load registers
+	ldw a0, 0(sp)
+	ldw a1, 4(sp)
+	ldw t0, 8(sp)
+	ldw t1, 12(sp)
+	ldw ra, 16(sp) 
+	addi sp, sp, 20
+
+ret
+; END:draw_paddles
+
+wait:
+	addi t0, zero, 0xFFF
+	slli t0, t0, 8
+
+inner:
+	addi t0, t0, -1
+	bge t0, zero, inner
+
+ret
+
+
+font_data:
+.word 0x7E427E00 ; 0
+.word 0x407E4400 ; 1
+.word 0x4E4A7A00 ; 2
+.word 0x7E4A4200 ; 3
+.word 0x7E080E00 ; 4
+.word 0x7A4A4E00 ; 5
+.word 0x7A4A7E00 ; 6
+.word 0x7E020600 ; 7
+.word 0x7E4A7E00 ; 8
+.word 0x7E4A4E00 ; 9
+.word 0x7E127E00 ; A
+.word 0x344A7E00 ; B
+.word 0x42423C00 ; C
+.word 0x3C427E00 ; D
+.word 0x424A7E00 ; E
+.word 0x020A7E00 ; F
+.word 0x00181800 ; separator
